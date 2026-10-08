@@ -9,7 +9,6 @@ import {
   Menu, 
   X, 
   ChevronDown, 
-  ArrowRight,
   ShieldCheck,
   Sparkles
 } from 'lucide-react';
@@ -46,7 +45,7 @@ export const Header: React.FC = () => {
   }, []);
 
   const navItemClass = (path: string) => {
-    const isActive = currentPath === path;
+    const isActive = path === '/' ? currentPath === '/' : currentPath.startsWith(path);
     return `text-xs font-medium uppercase tracking-[0.16em] transition-colors relative py-1 ${
       isActive 
         ? 'text-[#111111] font-semibold after:content-[""] after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-[#111111]' 
@@ -58,16 +57,25 @@ export const Header: React.FC = () => {
     <header className="sticky top-0 z-40 bg-[#F7F5F0]/95 backdrop-blur-md border-b border-[#DDD8CF] transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         
-        {/* Left: Brand Logo */}
+        {/* Left: Brand Logo & Wordmark */}
         <div 
           onClick={() => navigate('/')} 
-          className="cursor-pointer group py-2"
+          className="flex items-center gap-3 cursor-pointer group py-2 select-none"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }}
+          aria-label="TRENXURE Home"
         >
-          <BrandLogo className="h-12 w-auto max-h-12" alt="TRENXURE" priority />
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden bg-black flex items-center justify-center shrink-0">
+            <BrandLogo className="w-full h-full object-contain p-1" alt="TRENXURE" priority />
+          </div>
+          <span className="font-serif text-xl sm:text-2xl font-bold tracking-[0.2em] text-[#111111] uppercase transition-colors group-hover:text-[#B08A45]">
+            TRENXURE
+          </span>
         </div>
 
-        {/* Center: Desktop Navigation Bar */}
-        <nav className="hidden lg:flex items-center gap-8">
+        {/* Center: Desktop Navigation Bar in exact requested order */}
+        <nav className="hidden lg:flex items-center gap-6 xl:gap-8">
           <button 
             onClick={() => navigate('/')} 
             className={navItemClass('/')}
@@ -273,24 +281,17 @@ export const Header: React.FC = () => {
           >
             Contact
           </button>
+
+          <button 
+            onClick={() => navigate('/admin')} 
+            className={navItemClass('/admin')}
+          >
+            Admin
+          </button>
         </nav>
 
         {/* Right: Actions */}
-        <div className="flex items-center gap-3 sm:gap-5">
-          {/* Admin Switch Link */}
-          <button
-            onClick={() => navigate('/admin')}
-            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold tracking-wider rounded uppercase transition-colors ${
-              currentPath.startsWith('/admin')
-                ? 'bg-[#111111] text-white'
-                : 'bg-[#E9E1D4]/70 hover:bg-[#DDD8CF] text-[#111111]'
-            }`}
-            title="Switch to Admin Commerce Panel"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-[#B08A45]" />
-            <span>Admin</span>
-          </button>
-
+        <div className="flex items-center gap-3 sm:gap-4">
           {/* Search Trigger */}
           <button
             onClick={() => setIsSearchOpen(true)}
@@ -354,10 +355,21 @@ export const Header: React.FC = () => {
           <div className="fixed inset-y-0 left-0 max-w-xs w-full bg-[#F7F5F0] border-r border-[#DDD8CF] shadow-2xl p-6 flex flex-col justify-between overflow-y-auto">
             <div>
               <div className="flex items-center justify-between pb-6 border-b border-[#DDD8CF]">
-                <BrandLogo className="h-10 w-auto max-h-10" alt="TRENXURE" />
+                <div 
+                  onClick={() => { navigate('/'); setMobileMenuOpen(false); }} 
+                  className="flex items-center gap-2.5 cursor-pointer select-none"
+                >
+                  <div className="w-9 h-9 rounded-full overflow-hidden bg-black flex items-center justify-center shrink-0">
+                    <BrandLogo className="w-full h-full object-contain p-1" alt="TRENXURE" />
+                  </div>
+                  <span className="font-serif text-lg font-bold tracking-[0.18em] text-[#111111] uppercase">
+                    TRENXURE
+                  </span>
+                </div>
                 <button
                   onClick={() => setMobileMenuOpen(false)}
                   className="p-2 text-[#77736B] hover:text-[#111111]"
+                  aria-label="Close mobile menu"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -417,7 +429,13 @@ export const Header: React.FC = () => {
                   onClick={() => { navigate('/contact'); setMobileMenuOpen(false); }}
                   className="block w-full text-left text-sm font-semibold uppercase tracking-wider text-[#111111]"
                 >
-                  Contact & Atelier
+                  Contact
+                </button>
+                <button
+                  onClick={() => { navigate('/admin'); setMobileMenuOpen(false); }}
+                  className="block w-full text-left text-sm font-semibold uppercase tracking-wider text-[#111111]"
+                >
+                  Admin
                 </button>
               </div>
             </div>

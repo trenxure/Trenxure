@@ -1,6 +1,5 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { BrandLogo } from '../brand/BrandLogo';
 import { ArrowRight } from 'lucide-react';
 
 export const HeroSection: React.FC = () => {
@@ -86,11 +85,6 @@ export const HeroSection: React.FC = () => {
                 referrerPolicy="no-referrer"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
-
-              {/* Floating Luxury Dark Badge with original logo asset */}
-              <div className="absolute top-6 right-6 bg-black/95 backdrop-blur-md border border-[#B08A45]/40 rounded-xl p-3 sm:p-4 flex items-center justify-center text-center shadow-2xl hidden sm:flex">
-                <BrandLogo className="w-28 h-auto max-h-24" />
-              </div>
             </div>
           </div>
 
