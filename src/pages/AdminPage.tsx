@@ -1,6 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
-import { ProductService, OrderService, CouponService } from '../services/commerceService';
+import { useAuth } from '../context/AuthContext';
+import { ProductService, OrderService, CouponService, CategoryService } from '../services/commerceService';
+import { CategoryData } from '../services/firestoreService';
 import { Product, Order, OrderStatus, ProductVariant, Coupon } from '../types/commerce';
 import { BrandLogo } from '../components/brand/BrandLogo';
 import { 
@@ -30,7 +32,11 @@ import {
   ExternalLink,
   Eye,
   X,
-  Check
+  Check,
+  LogIn,
+  LogOut,
+  ShieldCheck,
+  Lock
 } from 'lucide-react';
 
 type AdminTab = 
@@ -68,6 +74,7 @@ interface CollectionItem {
 
 export const AdminPage: React.FC = () => {
   const { navigate, formatMoney, showToast } = useStore();
+  const { user, isAdmin, signInWithGoogle, logout, loading } = useAuth();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
 
@@ -91,15 +98,26 @@ export const AdminPage: React.FC = () => {
   // Order Detail Drawer/Modal
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
-  // Categories State
-  const [categories, setCategories] = useState<CategoryItem[]>([
-    { id: 'blazers', name: 'Blazers', subtitle: 'Bespoke Eveningwear', description: 'Italian velvet & structured cotton-viscose statement blazers.', itemCount: 3, image: 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=600&q=80', active: true },
-    { id: 'pants', name: 'Pants', subtitle: 'Tailored Motion', description: 'Architectural pleated trousers and heavyweight street cargos.', itemCount: 2, image: 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?auto=format&fit=crop&w=600&q=80', active: true },
-    { id: 't-shirts', name: 'T-Shirts', subtitle: 'Everyday Statement', description: '280 GSM luxury combed cotton vintage cut graphic tees.', itemCount: 2, image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=600&q=80', active: true },
-    { id: 'hoodies', name: 'Hoodies', subtitle: 'Architectural Terry', description: 'Heavyweight 420 GSM French terry hoodies with metallic stipple.', itemCount: 2, image: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?auto=format&fit=crop&w=600&q=80', active: true },
-    { id: 'coats', name: 'Coats', subtitle: 'Winter Grandeur', description: 'Wool-cashmere blend tailored overcoats with historic tapestry.', itemCount: 1, image: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=600&q=80', active: true },
-    { id: 'shirts', name: 'Shirts', subtitle: 'Liquid Elegance', description: 'Resort camp collars and silk-touch lyocell shirts.', itemCount: 1, image: 'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?auto=format&fit=crop&w=600&q=80', active: true },
-  ]);
+  // Categories State & Edit Modal
+  const [categories, setCategories] = useState<CategoryData[]>(() => CategoryService.getAll());
+  const [editingCategory, setEditingCategory] = useState<CategoryData | null>(null);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+
+  // Initial Sync from Firestore for All Entities
+  useEffect(() => {
+    CategoryService.syncWithFirestore().then(res => {
+      if (res && res.length > 0) setCategories(res);
+    });
+    ProductService.syncWithFirestore().then(res => {
+      if (res && res.length > 0) setProducts(res);
+    });
+    OrderService.syncWithFirestore().then(res => {
+      if (res && res.length > 0) setOrders(res);
+    });
+    CouponService.syncWithFirestore().then(res => {
+      if (res && res.length > 0) setCoupons(res);
+    });
+  }, []);
 
   // Collections State
   const [collections, setCollections] = useState<CollectionItem[]>([
@@ -170,42 +188,57 @@ export const AdminPage: React.FC = () => {
   }, [products]);
 
   // Handlers
-  const handleAdjustStock = () => {
+  const handleAdjustStock = async () => {
     if (!adjustModalProduct) return;
-    const success = ProductService.adjustStock(
-      adjustModalProduct.product.id,
-      adjustModalProduct.variant.id,
-      stockDelta
-    );
-    if (success) {
-      setProducts(ProductService.getAll());
-      showToast(`Stock updated for ${adjustModalProduct.product.name} (${adjustModalProduct.variant.size}): ${stockDelta > 0 ? '+' : ''}${stockDelta}`, 'success');
-      setAdjustModalProduct(null);
-    } else {
-      showToast('Cannot reduce stock below 0.', 'error');
-    }
-  };
-
-  const handleUpdateOrderStatus = (orderId: string, newStatus: OrderStatus) => {
-    const updated = OrderService.updateStatus(orderId, newStatus);
-    if (updated) {
-      setOrders(OrderService.getAll());
-      if (selectedOrder?.id === orderId) {
-        setSelectedOrder({ ...updated });
+    try {
+      const success = await ProductService.adjustStock(
+        adjustModalProduct.product.id,
+        adjustModalProduct.variant.id,
+        stockDelta
+      );
+      if (success) {
+        setProducts(ProductService.getAll());
+        showToast(`Stock updated for ${adjustModalProduct.product.name} (${adjustModalProduct.variant.size}): ${stockDelta > 0 ? '+' : ''}${stockDelta}`, 'success');
+        setAdjustModalProduct(null);
+      } else {
+        showToast('Cannot reduce stock below 0.', 'error');
       }
-      showToast(`Order status updated to ${newStatus.toUpperCase()}`, 'success');
+    } catch (err) {
+      console.error('Adjust stock error:', err);
+      showToast(`Failed to update stock in Firestore: ${err instanceof Error ? err.message : 'Database error'}`, 'error');
     }
   };
 
-  const handleDeleteProduct = (id: string) => {
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
+    try {
+      const updated = await OrderService.updateStatus(orderId, newStatus);
+      if (updated) {
+        setOrders(OrderService.getAll());
+        if (selectedOrder?.id === orderId) {
+          setSelectedOrder({ ...updated });
+        }
+        showToast(`Order status updated to ${newStatus.toUpperCase()}`, 'success');
+      }
+    } catch (err) {
+      console.error('Update order status error:', err);
+      showToast(`Failed to update order status: ${err instanceof Error ? err.message : 'Database error'}`, 'error');
+    }
+  };
+
+  const handleDeleteProduct = async (id: string) => {
     if (confirm('Are you sure you want to delete this creation from the catalog?')) {
-      ProductService.delete(id);
-      setProducts(ProductService.getAll());
-      showToast('Product removed from catalog', 'info');
+      try {
+        await ProductService.delete(id);
+        setProducts(ProductService.getAll());
+        showToast('Product removed from catalog and Firestore', 'info');
+      } catch (err) {
+        console.error('Delete product error:', err);
+        showToast(`Failed to delete product: ${err instanceof Error ? err.message : 'Database error'}`, 'error');
+      }
     }
   };
 
-  const handleDuplicateProduct = (p: Product) => {
+  const handleDuplicateProduct = async (p: Product) => {
     const dup: Product = {
       ...p,
       id: `prod-${Date.now()}`,
@@ -219,12 +252,17 @@ export const AdminPage: React.FC = () => {
         productId: `prod-${Date.now()}`
       }))
     };
-    ProductService.create(dup);
-    setProducts(ProductService.getAll());
-    showToast(`Duplicated: ${dup.name}`, 'success');
+    try {
+      await ProductService.create(dup);
+      setProducts(ProductService.getAll());
+      showToast(`Duplicated: ${dup.name}`, 'success');
+    } catch (err) {
+      console.error('Duplicate product error:', err);
+      showToast(`Failed to duplicate product: ${err instanceof Error ? err.message : 'Database error'}`, 'error');
+    }
   };
 
-  const handleCreateCoupon = (e: React.FormEvent) => {
+  const handleCreateCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCouponCode.trim()) return;
 
@@ -237,25 +275,34 @@ export const AdminPage: React.FC = () => {
       description: `${newCouponVal}% off on orders above Rs. ${newCouponMin.toLocaleString()}`
     };
 
-    const updated = [newC, ...coupons];
-    localStorage.setItem('trenxure_coupons_v1', JSON.stringify(updated));
-    setCoupons(updated);
-    setNewCouponCode('');
-    showToast(`Coupon ${newC.code} activated`, 'success');
+    try {
+      await CouponService.create(newC);
+      setCoupons(CouponService.getAll());
+      setNewCouponCode('');
+      showToast(`Coupon ${newC.code} activated in Firestore`, 'success');
+    } catch (err) {
+      console.error('Create coupon error:', err);
+      showToast(`Failed to create coupon: ${err instanceof Error ? err.message : 'Database error'}`, 'error');
+    }
   };
 
-  const handleDeleteCoupon = (code: string) => {
-    const updated = coupons.filter(c => c.code !== code);
-    localStorage.setItem('trenxure_coupons_v1', JSON.stringify(updated));
-    setCoupons(updated);
-    showToast(`Coupon ${code} removed`, 'info');
+  const handleDeleteCoupon = async (code: string) => {
+    try {
+      await CouponService.delete(code);
+      setCoupons(CouponService.getAll());
+      showToast(`Coupon ${code} removed from Firestore`, 'info');
+    } catch (err) {
+      console.error('Delete coupon error:', err);
+      showToast(`Failed to delete coupon: ${err instanceof Error ? err.message : 'Database error'}`, 'error');
+    }
   };
 
-  const handleCreateCategory = (e: React.FormEvent) => {
+  const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) return;
-    const newCat: CategoryItem = {
-      id: newCatName.toLowerCase().replace(/\s+/g, '-'),
+    const catId = newCatName.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-');
+    const newCat: CategoryData = {
+      id: catId,
       name: newCatName.trim(),
       subtitle: newCatSubtitle.trim() || 'Curated Category',
       description: newCatDesc.trim() || 'Handcrafted garments and bespoke editions.',
@@ -263,11 +310,41 @@ export const AdminPage: React.FC = () => {
       image: 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=600&q=80',
       active: true
     };
-    setCategories([newCat, ...categories]);
-    setNewCatName('');
-    setNewCatSubtitle('');
-    setNewCatDesc('');
-    showToast(`Category "${newCat.name}" created`, 'success');
+    try {
+      await CategoryService.create(newCat);
+      setCategories(CategoryService.getAll());
+      setNewCatName('');
+      setNewCatSubtitle('');
+      setNewCatDesc('');
+      showToast(`Category "${newCat.name}" created and saved to Firestore`, 'success');
+    } catch (err) {
+      console.error('Create category error:', err);
+      showToast(`Failed to create category: ${err instanceof Error ? err.message : 'Database error'}`, 'error');
+    }
+  };
+
+  const handleUpdateCategory = async (id: string, updates: Partial<CategoryData>) => {
+    try {
+      await CategoryService.update(id, updates);
+      setCategories(CategoryService.getAll());
+      showToast('Category updated and synced to Firestore', 'success');
+    } catch (err) {
+      console.error('Update category error:', err);
+      showToast(`Failed to update category: ${err instanceof Error ? err.message : 'Database error'}`, 'error');
+    }
+  };
+
+  const handleDeleteCategory = async (id: string, name: string) => {
+    if (confirm(`Are you sure you want to delete category "${name}"?`)) {
+      try {
+        await CategoryService.delete(id);
+        setCategories(CategoryService.getAll());
+        showToast(`Category "${name}" deleted from Firestore`, 'info');
+      } catch (err) {
+        console.error('Delete category error:', err);
+        showToast(`Failed to delete category: ${err instanceof Error ? err.message : 'Database error'}`, 'error');
+      }
+    }
   };
 
   const handleCreateCollection = (e: React.FormEvent) => {
@@ -304,6 +381,96 @@ export const AdminPage: React.FC = () => {
     });
   }, [products, productSearch, productCategoryFilter]);
 
+  // Authorization & Authentication Guard
+  if (loading) {
+    return (
+      <div className="bg-[#111111] text-[#F7F5F0] min-h-screen flex flex-col justify-center items-center p-6 font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-2 border-[#D0B16A] border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs uppercase tracking-[0.2em] text-[#D0B16A]">Verifying Atelier Credentials...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 1. Anonymous / Unauthenticated Guard
+  if (!user) {
+    return (
+      <div className="bg-[#111111] text-[#F7F5F0] min-h-screen flex flex-col justify-center items-center p-6 font-sans">
+        <div className="max-w-md w-full bg-[#181818] border border-white/10 rounded-2xl p-8 text-center space-y-6 shadow-2xl">
+          <div className="flex justify-center">
+            <BrandLogo className="h-10 w-auto" />
+          </div>
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-950/60 border border-red-800 text-red-400 text-[10px] font-bold uppercase tracking-wider">
+              <Lock className="w-3 h-3" />
+              Restricted Atelier Console
+            </div>
+            <h1 className="font-serif text-2xl font-bold text-white">Administrator Access Required</h1>
+            <p className="text-xs text-white/60 leading-relaxed">
+              This administrative management interface is strictly restricted to the authorized atelier manager (<strong className="text-white">trenxure@gmail.com</strong>).
+            </p>
+          </div>
+          <div className="space-y-3 pt-2">
+            <button
+              onClick={() => signInWithGoogle()}
+              className="w-full py-3 bg-[#B08A45] hover:bg-[#D0B16A] text-[#111111] text-xs font-bold uppercase tracking-wider rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Sign In with Administrator Account</span>
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              className="w-full py-2.5 border border-white/15 hover:bg-white/5 text-white/70 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Return to Storefront</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Non-Admin Authenticated Customer Guard
+  if (!isAdmin) {
+    return (
+      <div className="bg-[#111111] text-[#F7F5F0] min-h-screen flex flex-col justify-center items-center p-6 font-sans">
+        <div className="max-w-md w-full bg-[#181818] border border-amber-900/40 rounded-2xl p-8 text-center space-y-6 shadow-2xl">
+          <div className="flex justify-center">
+            <BrandLogo className="h-10 w-auto" />
+          </div>
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/60 border border-amber-800 text-amber-400 text-[10px] font-bold uppercase tracking-wider">
+              <AlertTriangle className="w-3 h-3" />
+              Patron Account Detected
+            </div>
+            <h1 className="font-serif text-2xl font-bold text-white">Access Denied</h1>
+            <p className="text-xs text-white/60 leading-relaxed">
+              You are signed in as <strong className="text-[#D0B16A]">{user.email}</strong>. This account does not possess administrative clearance for the TRENXURE Commerce Console.
+            </p>
+          </div>
+          <div className="space-y-3 pt-2">
+            <button
+              onClick={() => logout().then(() => signInWithGoogle())}
+              className="w-full py-3 bg-[#B08A45] hover:bg-[#D0B16A] text-[#111111] text-xs font-bold uppercase tracking-wider rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Switch to Admin Account (trenxure@gmail.com)</span>
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              className="w-full py-2.5 border border-white/15 hover:bg-white/5 text-white/70 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Return to Storefront</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-[#111111] text-[#F7F5F0] min-h-screen flex flex-col font-sans">
       
@@ -327,9 +494,42 @@ export const AdminPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3 text-xs text-white/70">
-          <span className="hidden md:inline">Admin: <strong>trenxure@gmail.com</strong></span>
-          <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-mono">
-            LIVE SYNC
+          {user ? (
+            <div className="flex items-center gap-2.5">
+              {user.photoURL ? (
+                <img src={user.photoURL} alt={user.displayName || 'Admin'} className="w-6 h-6 rounded-full border border-[#D0B16A]" />
+              ) : (
+                <div className="w-6 h-6 rounded-full bg-[#B08A45] text-black font-bold flex items-center justify-center text-[10px]">
+                  {user.displayName ? user.displayName.charAt(0) : 'A'}
+                </div>
+              )}
+              <div className="hidden sm:block text-right">
+                <span className="block text-white font-medium text-xs leading-tight">{user.displayName || user.email}</span>
+                <span className="text-[10px] text-[#D0B16A] leading-tight block">
+                  {isAdmin ? 'Verified Administrator' : 'Authenticated Patron'}
+                </span>
+              </div>
+              <button
+                onClick={() => logout()}
+                className="px-2 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-[10px] uppercase font-semibold transition-colors flex items-center gap-1"
+                title="Sign Out"
+              >
+                <LogOut className="w-3 h-3" />
+                <span className="hidden md:inline">Sign Out</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => signInWithGoogle()}
+              className="px-3 py-1.5 bg-[#B08A45] hover:bg-[#D0B16A] text-[#111111] font-bold rounded text-xs transition-colors flex items-center gap-1.5"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In with Google</span>
+            </button>
+          )}
+          <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-mono flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            FIRESTORE LIVE
           </span>
         </div>
       </header>
@@ -752,20 +952,34 @@ export const AdminPage: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4">
-                        <span className="text-xs text-white/70">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-white/70 hidden sm:inline">
                           <strong>{c.itemCount}</strong> products linked
                         </span>
                         <button
-                          onClick={() => {
-                            setCategories(categories.map(cat => cat.id === c.id ? { ...cat, active: !cat.active } : cat));
-                            showToast(`Category ${c.name} toggled ${!c.active ? 'Active' : 'Hidden'}`, 'info');
-                          }}
+                          onClick={() => handleUpdateCategory(c.id, { active: !c.active })}
                           className={`px-3 py-1 text-xs rounded font-semibold uppercase tracking-wider ${
                             c.active ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-red-950 text-red-400 border border-red-800'
                           }`}
                         >
                           {c.active ? 'Active' : 'Hidden'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingCategory(c);
+                            setIsCategoryModalOpen(true);
+                          }}
+                          className="p-1.5 bg-white/5 hover:bg-white/15 text-white/80 hover:text-white rounded border border-white/10 transition-colors"
+                          title="Edit Category"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCategory(c.id, c.name)}
+                          className="p-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-400 rounded border border-red-800/40 transition-colors"
+                          title="Delete Category"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -1496,7 +1710,7 @@ export const AdminPage: React.FC = () => {
             </div>
 
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 const form = e.target as HTMLFormElement;
                 const formData = new FormData(form);
@@ -1514,62 +1728,67 @@ export const AdminPage: React.FC = () => {
                 const imageUrl = formData.get('imageUrl') as string;
                 const sku = formData.get('sku') as string;
 
-                if (editingProduct) {
-                  ProductService.update(editingProduct.id, {
-                    name,
-                    categoryId: categoryId as any,
-                    categoryName: categoryId.charAt(0).toUpperCase() + categoryId.slice(1),
-                    basePrice,
-                    compareAtPrice,
-                    tagline,
-                    description,
-                    material,
-                    fit,
-                    style,
-                    gender,
-                    sku,
-                    images: imageUrl ? [imageUrl] : editingProduct.images
-                  });
-                  showToast(`Updated "${name}"`, 'success');
-                } else {
-                  const newProduct: Product = {
-                    id: `prod-${Date.now()}`,
-                    name,
-                    slug: name.toLowerCase().replace(/\s+/g, '-'),
-                    sku: sku || `TRX-${categoryId.toUpperCase().slice(0, 3)}-${Date.now().toString().slice(-4)}`,
-                    tagline,
-                    description,
-                    categoryId: categoryId as any,
-                    categoryName: categoryId.charAt(0).toUpperCase() + categoryId.slice(1),
-                    collectionIds: ['formal', 'new-arrivals'],
-                    style,
-                    gender,
-                    basePrice,
-                    compareAtPrice,
-                    status: 'active',
-                    featured: true,
-                    newArrival: true,
-                    bestSeller: false,
-                    images: [imageUrl || 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=1000&q=80'],
-                    variants: [
-                      { id: `v-${Date.now()}-s`, productId: `prod-${Date.now()}`, sku: `${sku}-S`, color: 'Classic Black', colorHex: '#111111', size: 'S', price: basePrice, stockQuantity: 8, reservedQuantity: 0, lowStockThreshold: 3, active: true },
-                      { id: `v-${Date.now()}-m`, productId: `prod-${Date.now()}`, sku: `${sku}-M`, color: 'Classic Black', colorHex: '#111111', size: 'M', price: basePrice, stockQuantity: 12, reservedQuantity: 0, lowStockThreshold: 3, active: true },
-                      { id: `v-${Date.now()}-l`, productId: `prod-${Date.now()}`, sku: `${sku}-L`, color: 'Classic Black', colorHex: '#111111', size: 'L', price: basePrice, stockQuantity: 6, reservedQuantity: 0, lowStockThreshold: 3, active: true },
-                      { id: `v-${Date.now()}-xl`, productId: `prod-${Date.now()}`, sku: `${sku}-XL`, color: 'Classic Black', colorHex: '#111111', size: 'XL', price: basePrice, stockQuantity: 4, reservedQuantity: 0, lowStockThreshold: 3, active: true },
-                    ],
-                    material,
-                    fit,
-                    careInstructions: ['Dry clean recommended'],
-                    reviewsCount: 0,
-                    averageRating: 5.0,
-                    createdAt: new Date().toISOString()
-                  };
-                  ProductService.create(newProduct);
-                  showToast(`Created creation "${name}"`, 'success');
-                }
+                try {
+                  if (editingProduct) {
+                    await ProductService.update(editingProduct.id, {
+                      name,
+                      categoryId: categoryId as any,
+                      categoryName: categoryId.charAt(0).toUpperCase() + categoryId.slice(1),
+                      basePrice,
+                      compareAtPrice,
+                      tagline,
+                      description,
+                      material,
+                      fit,
+                      style,
+                      gender,
+                      sku,
+                      images: imageUrl ? [imageUrl] : editingProduct.images
+                    });
+                    showToast(`Updated "${name}" in Firestore`, 'success');
+                  } else {
+                    const newProduct: Product = {
+                      id: `prod-${Date.now()}`,
+                      name,
+                      slug: name.toLowerCase().replace(/\s+/g, '-'),
+                      sku: sku || `TRX-${categoryId.toUpperCase().slice(0, 3)}-${Date.now().toString().slice(-4)}`,
+                      tagline,
+                      description,
+                      categoryId: categoryId as any,
+                      categoryName: categoryId.charAt(0).toUpperCase() + categoryId.slice(1),
+                      collectionIds: ['formal', 'new-arrivals'],
+                      style,
+                      gender,
+                      basePrice,
+                      compareAtPrice,
+                      status: 'active',
+                      featured: true,
+                      newArrival: true,
+                      bestSeller: false,
+                      images: [imageUrl || 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=1000&q=80'],
+                      variants: [
+                        { id: `v-${Date.now()}-s`, productId: `prod-${Date.now()}`, sku: `${sku}-S`, color: 'Classic Black', colorHex: '#111111', size: 'S', price: basePrice, stockQuantity: 8, reservedQuantity: 0, lowStockThreshold: 3, active: true },
+                        { id: `v-${Date.now()}-m`, productId: `prod-${Date.now()}`, sku: `${sku}-M`, color: 'Classic Black', colorHex: '#111111', size: 'M', price: basePrice, stockQuantity: 12, reservedQuantity: 0, lowStockThreshold: 3, active: true },
+                        { id: `v-${Date.now()}-l`, productId: `prod-${Date.now()}`, sku: `${sku}-L`, color: 'Classic Black', colorHex: '#111111', size: 'L', price: basePrice, stockQuantity: 6, reservedQuantity: 0, lowStockThreshold: 3, active: true },
+                        { id: `v-${Date.now()}-xl`, productId: `prod-${Date.now()}`, sku: `${sku}-XL`, color: 'Classic Black', colorHex: '#111111', size: 'XL', price: basePrice, stockQuantity: 4, reservedQuantity: 0, lowStockThreshold: 3, active: true },
+                      ],
+                      material,
+                      fit,
+                      careInstructions: ['Dry clean recommended'],
+                      reviewsCount: 0,
+                      averageRating: 5.0,
+                      createdAt: new Date().toISOString()
+                    };
+                    await ProductService.create(newProduct);
+                    showToast(`Created creation "${name}" in Firestore`, 'success');
+                  }
 
-                setProducts(ProductService.getAll());
-                setIsProductModalOpen(false);
+                  setProducts(ProductService.getAll());
+                  setIsProductModalOpen(false);
+                } catch (err) {
+                  console.error('Save product error:', err);
+                  showToast(`Failed to save product in Firestore: ${err instanceof Error ? err.message : 'Database error'}`, 'error');
+                }
               }}
               className="space-y-4 text-xs"
             >
@@ -1727,6 +1946,105 @@ export const AdminPage: React.FC = () => {
                   className="px-6 py-2 bg-[#B08A45] hover:bg-[#D0B16A] text-[#111111] font-bold rounded transition-colors"
                 >
                   {editingProduct ? 'Save Changes' : 'Create Product'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Category Editing Modal */}
+      {isCategoryModalOpen && editingCategory && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#1E1E1E] border border-white/20 rounded-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-white/10">
+              <h3 className="font-serif text-xl font-bold text-white">Edit Category</h3>
+              <button
+                onClick={() => {
+                  setIsCategoryModalOpen(false);
+                  setEditingCategory(null);
+                }}
+                className="p-1 text-white/50 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const form = e.target as HTMLFormElement;
+                const formData = new FormData(form);
+                const name = formData.get('name') as string;
+                const subtitle = formData.get('subtitle') as string;
+                const description = formData.get('description') as string;
+                const image = formData.get('image') as string;
+
+                await handleUpdateCategory(editingCategory.id, {
+                  name,
+                  subtitle,
+                  description,
+                  image: image || editingCategory.image
+                });
+                setIsCategoryModalOpen(false);
+                setEditingCategory(null);
+              }}
+              className="space-y-4 text-xs"
+            >
+              <div>
+                <label className="text-white/70 block mb-1 font-semibold">Category Name</label>
+                <input
+                  name="name"
+                  defaultValue={editingCategory.name}
+                  className="w-full bg-black/60 border border-white/20 rounded p-2 text-white outline-none focus:border-[#B08A45]"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-white/70 block mb-1 font-semibold">Subtitle / Tagline</label>
+                <input
+                  name="subtitle"
+                  defaultValue={editingCategory.subtitle}
+                  className="w-full bg-black/60 border border-white/20 rounded p-2 text-white outline-none focus:border-[#B08A45]"
+                />
+              </div>
+
+              <div>
+                <label className="text-white/70 block mb-1 font-semibold">Description</label>
+                <textarea
+                  name="description"
+                  defaultValue={editingCategory.description}
+                  rows={3}
+                  className="w-full bg-black/60 border border-white/20 rounded p-2 text-white outline-none focus:border-[#B08A45]"
+                />
+              </div>
+
+              <div>
+                <label className="text-white/70 block mb-1 font-semibold">Cover Image URL</label>
+                <input
+                  name="image"
+                  defaultValue={editingCategory.image}
+                  className="w-full bg-black/60 border border-white/20 rounded p-2 text-white outline-none focus:border-[#B08A45]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCategoryModalOpen(false);
+                    setEditingCategory(null);
+                  }}
+                  className="px-4 py-2 border border-white/20 text-white rounded hover:bg-white/10 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#B08A45] hover:bg-[#D0B16A] text-[#111111] font-bold rounded transition-colors"
+                >
+                  Save Changes
                 </button>
               </div>
             </form>

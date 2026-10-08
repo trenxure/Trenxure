@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { BrandLogo } from '../brand/BrandLogo';
 import { useStore } from '../../context/StoreContext';
+import { useAuth } from '../../context/AuthContext';
+import { CategoryService } from '../../services/commerceService';
 import { 
   Search, 
   User, 
@@ -20,8 +22,12 @@ export const Header: React.FC = () => {
     wishlist, 
     setIsSearchOpen, 
     currentPath, 
-    navigate 
+    navigate,
+    categories: storeCategories,
+    collections: storeCollections
   } = useStore();
+  const { user, isAdmin } = useAuth();
+  const categories = useMemo(() => storeCategories.filter(c => c.active !== false), [storeCategories]);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [shopDropdownOpen, setShopDropdownOpen] = useState(false);
@@ -108,53 +114,25 @@ export const Header: React.FC = () => {
                     Garment Categories
                   </h4>
                   <ul className="space-y-2 text-xs text-[#77736B]">
+                    {categories.slice(0, 7).map((cat) => (
+                      <li key={cat.id}>
+                        <button 
+                          onClick={() => { navigate(`/shop?category=${cat.id}`); setShopDropdownOpen(false); }} 
+                          className="hover:text-[#B08A45] hover:translate-x-1 transition-all flex items-center justify-between w-full text-left"
+                        >
+                          <span>{cat.name}</span>
+                          {cat.id === 'blazers' && (
+                            <span className="text-[10px] text-[#B08A45] font-semibold">Bestseller</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
                     <li>
                       <button 
-                        onClick={() => { navigate('/shop?category=blazers'); setShopDropdownOpen(false); }} 
-                        className="hover:text-[#B08A45] hover:translate-x-1 transition-all flex items-center justify-between w-full"
+                        onClick={() => { navigate('/shop'); setShopDropdownOpen(false); }} 
+                        className="text-[#B08A45] hover:underline font-semibold pt-1 block"
                       >
-                        <span>Statement Blazers</span>
-                        <span className="text-[10px] text-[#B08A45] font-semibold">Bestseller</span>
-                      </button>
-                    </li>
-                    <li>
-                      <button 
-                        onClick={() => { navigate('/shop?category=hoodies'); setShopDropdownOpen(false); }} 
-                        className="hover:text-[#B08A45] hover:translate-x-1 transition-all block w-full text-left"
-                      >
-                        Heavyweight Hoodies (420 GSM)
-                      </button>
-                    </li>
-                    <li>
-                      <button 
-                        onClick={() => { navigate('/shop?category=t-shirts'); setShopDropdownOpen(false); }} 
-                        className="hover:text-[#B08A45] hover:translate-x-1 transition-all block w-full text-left"
-                      >
-                        Graphic Statement T-Shirts
-                      </button>
-                    </li>
-                    <li>
-                      <button 
-                        onClick={() => { navigate('/shop?category=coats'); setShopDropdownOpen(false); }} 
-                        className="hover:text-[#B08A45] hover:translate-x-1 transition-all block w-full text-left"
-                      >
-                        Tapestry Overcoats & Trench
-                      </button>
-                    </li>
-                    <li>
-                      <button 
-                        onClick={() => { navigate('/shop?category=pants'); setShopDropdownOpen(false); }} 
-                        className="hover:text-[#B08A45] hover:translate-x-1 transition-all block w-full text-left"
-                      >
-                        Pleated Cargo Trousers
-                      </button>
-                    </li>
-                    <li>
-                      <button 
-                        onClick={() => { navigate('/shop?category=shirts'); setShopDropdownOpen(false); }} 
-                        className="hover:text-[#B08A45] hover:translate-x-1 transition-all block w-full text-left"
-                      >
-                        Marble Silk-Touch Shirts
+                        All Categories →
                       </button>
                     </li>
                   </ul>
@@ -233,24 +211,15 @@ export const Header: React.FC = () => {
 
             {collectionsDropdownOpen && (
               <div className="absolute top-full left-1/2 -translate-x-1/2 w-64 bg-white border border-[#DDD8CF] shadow-xl p-4 rounded-md space-y-2 animate-in fade-in slide-in-from-top-2 duration-150 z-50">
-                <button 
-                  onClick={() => { navigate('/collections/formal'); setCollectionsDropdownOpen(false); }} 
-                  className="block w-full text-left px-3 py-2 text-xs text-[#111111] hover:bg-[#F7F5F0] hover:text-[#B08A45] rounded transition-colors font-medium"
-                >
-                  Formal & Gala Suiting
-                </button>
-                <button 
-                  onClick={() => { navigate('/collections/casual'); setCollectionsDropdownOpen(false); }} 
-                  className="block w-full text-left px-3 py-2 text-xs text-[#111111] hover:bg-[#F7F5F0] hover:text-[#B08A45] rounded transition-colors font-medium"
-                >
-                  Casual Luxury Streetwear
-                </button>
-                <button 
-                  onClick={() => { navigate('/collections/new-arrivals'); setCollectionsDropdownOpen(false); }} 
-                  className="block w-full text-left px-3 py-2 text-xs text-[#111111] hover:bg-[#F7F5F0] hover:text-[#B08A45] rounded transition-colors font-medium"
-                >
-                  New Autumn/Winter Drop
-                </button>
+                {storeCollections.filter(c => c.active !== false).map((col) => (
+                  <button 
+                    key={col.id}
+                    onClick={() => { navigate(`/collections/${col.slug}`); setCollectionsDropdownOpen(false); }} 
+                    className="block w-full text-left px-3 py-2 text-xs text-[#111111] hover:bg-[#F7F5F0] hover:text-[#B08A45] rounded transition-colors font-medium truncate"
+                  >
+                    {col.title}
+                  </button>
+                ))}
                 <button 
                   onClick={() => { navigate('/lookbook'); setCollectionsDropdownOpen(false); }} 
                   className="block w-full text-left px-3 py-2 text-xs text-[#B08A45] hover:bg-[#F7F5F0] rounded transition-colors font-semibold border-t border-[#DDD8CF] mt-2 pt-2"
@@ -304,10 +273,26 @@ export const Header: React.FC = () => {
           {/* Account Profile */}
           <button
             onClick={() => navigate('/account')}
-            className="p-2 text-[#111111] hover:text-[#B08A45] transition-colors relative"
+            className="p-1.5 text-[#111111] hover:text-[#B08A45] transition-colors relative flex items-center justify-center rounded-full"
             aria-label="Customer Account"
+            title={user ? `Signed in as ${user.displayName || user.email}` : 'Sign In'}
           >
-            <User className="w-5 h-5 stroke-[1.5]" />
+            {user?.photoURL ? (
+              <img 
+                src={user.photoURL} 
+                alt={user.displayName || 'Account'} 
+                className="w-6 h-6 rounded-full object-cover border border-[#D0B16A]" 
+              />
+            ) : user ? (
+              <div className="w-6 h-6 rounded-full bg-[#111111] text-[#D0B16A] text-[10px] font-bold flex items-center justify-center border border-[#D0B16A]">
+                {user.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}
+              </div>
+            ) : (
+              <User className="w-5 h-5 stroke-[1.5]" />
+            )}
+            {user && (
+              <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${isAdmin ? 'bg-[#D0B16A]' : 'bg-emerald-500'} ring-1 ring-white`} />
+            )}
           </button>
 
           {/* Wishlist */}

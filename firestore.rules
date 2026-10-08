@@ -1,0 +1,112 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() &&
+        request.auth.token.email == 'trenxure@gmail.com' &&
+        request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function doesNotElevateRole() {
+      let incoming = request.resource.data;
+      let existing = resource != null ? resource.data : {};
+      return (
+        (!('role' in incoming) || incoming.role == (('role' in existing) ? existing.role : 'customer')) &&
+        (!('isAdmin' in incoming) || incoming.isAdmin == (('isAdmin' in existing) ? existing.isAdmin : false)) &&
+        (!('permissions' in incoming) || incoming.permissions == (('permissions' in existing) ? existing.permissions : []))
+      );
+    }
+
+    function isValidOrderCreate() {
+      let order = request.resource.data;
+      return (
+        order.keys().hasAll(['id', 'orderNumber', 'customerName', 'customerEmail', 'items', 'total', 'status']) &&
+        order.id is string && order.id.size() > 0 &&
+        order.orderNumber is string && order.orderNumber.size() > 0 &&
+        order.customerName is string && order.customerName.size() > 0 &&
+        order.customerEmail is string && order.customerEmail.size() > 0 &&
+        order.items is list && order.items.size() > 0 &&
+        order.total is number && order.total >= 0 &&
+        order.status in ['pending', 'confirmed'] &&
+        (
+          (isSignedIn() && order.userId == request.auth.uid) ||
+          (!isSignedIn() && (!('userId' in order) || order.userId == null || order.userId == 'guest'))
+        )
+      );
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Admins whitelist collection - only accessible by admins
+    match /admins/{adminId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Store settings & announcements
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Product catalog
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Categories
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Coupons
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Collections
+    match /collections/{collectionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Orders - customers can only create valid orders and read their own orders
+    match /orders/{orderId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isValidOrderCreate() || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // Customers directory
+    match /customers/{customerId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // User profiles - owners can update basic profile info without role escalation
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if (isOwner(userId) && doesNotElevateRole()) || isAdmin();
+      allow update: if (isOwner(userId) && doesNotElevateRole()) || isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}

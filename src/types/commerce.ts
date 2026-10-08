@@ -105,6 +105,7 @@ export interface OrderItem {
 export interface Order {
   id: string;
   orderNumber: string; // e.g. TRX-89421
+  userId?: string;
   customerId?: string;
   customerName: string;
   customerEmail: string;

@@ -1,6 +1,20 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { CartItem, Product } from '../types/commerce';
-import { ProductService } from '../services/commerceService';
+import { 
+  ProductService, 
+  CategoryService, 
+  CollectionService, 
+  HomepageService, 
+  SettingsService 
+} from '../services/commerceService';
+import { 
+  CategoryData, 
+  CollectionData, 
+  HomepageContentData, 
+  StoreSettingsData,
+  DEFAULT_HOMEPAGE,
+  DEFAULT_SETTINGS
+} from '../services/firestoreService';
 
 interface Toast {
   id: string;
@@ -9,6 +23,19 @@ interface Toast {
 }
 
 interface StoreContextType {
+  // Reactive Commerce State
+  categories: CategoryData[];
+  setCategories: React.Dispatch<React.SetStateAction<CategoryData[]>>;
+  products: Product[];
+  setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
+  collections: CollectionData[];
+  setCollections: React.Dispatch<React.SetStateAction<CollectionData[]>>;
+  homepageContent: HomepageContentData;
+  setHomepageContent: React.Dispatch<React.SetStateAction<HomepageContentData>>;
+  storeSettings: StoreSettingsData;
+  setStoreSettings: React.Dispatch<React.SetStateAction<StoreSettingsData>>;
+  refreshCatalog: () => Promise<void>;
+
   cart: CartItem[];
   addToCart: (product: Product, variantId?: string, quantity?: number) => boolean;
   updateCartQuantity: (itemId: string, quantity: number) => void;
@@ -43,6 +70,37 @@ interface StoreContextType {
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Reactive Commerce Catalog State
+  const [categories, setCategories] = useState<CategoryData[]>(() => CategoryService.getAll());
+  const [products, setProducts] = useState<Product[]>(() => ProductService.getAll());
+  const [collections, setCollections] = useState<CollectionData[]>(() => CollectionService.getAll());
+  const [homepageContent, setHomepageContent] = useState<HomepageContentData>(() => HomepageService.getContent());
+  const [storeSettings, setStoreSettings] = useState<StoreSettingsData>(() => SettingsService.getSettings());
+
+  const refreshCatalog = useCallback(async () => {
+    try {
+      const [cats, prods, cols, home, settings] = await Promise.all([
+        CategoryService.syncWithFirestore(),
+        ProductService.syncWithFirestore(),
+        CollectionService.syncWithFirestore(),
+        HomepageService.syncWithFirestore(),
+        SettingsService.syncWithFirestore()
+      ]);
+      if (cats && cats.length > 0) setCategories(cats);
+      if (prods && prods.length > 0) setProducts(prods);
+      if (cols && cols.length > 0) setCollections(cols);
+      if (home) setHomepageContent(home);
+      if (settings) setStoreSettings(settings);
+    } catch (err) {
+      console.warn('Refresh catalog sync failed:', err);
+    }
+  }, []);
+
+  // Initial Sync from Firestore on Mount
+  useEffect(() => {
+    refreshCatalog();
+  }, [refreshCatalog]);
+
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem('trenxure_cart_v1');
@@ -116,7 +174,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addToCart = (product: Product, variantId?: string, quantity: number = 1): boolean => {
-    // Select first active variant if none provided
     const targetVariant = variantId 
       ? product.variants.find(v => v.id === variantId)
       : product.variants.find(v => v.stockQuantity > 0) || product.variants[0];
@@ -163,8 +220,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     });
 
-    showToast(`Added ${product.name} (${targetVariant.size}) to cart`);
     setIsCartOpen(true);
+    showToast(`Added ${product.name} (${targetVariant.size}) to your bag!`, 'success');
     return true;
   };
 
@@ -173,20 +230,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       removeFromCart(itemId);
       return;
     }
-    setCart(prev => prev.map(item => {
-      if (item.id === itemId) {
-        const validatedQty = Math.min(quantity, item.maxStock);
-        if (quantity > item.maxStock) {
-          showToast(`Maximum stock limit reached for this size.`, 'info');
+
+    setCart(prevCart => {
+      return prevCart.map(item => {
+        if (item.id === itemId) {
+          if (quantity > item.maxStock) {
+            showToast(`Maximum available stock is ${item.maxStock}`, 'info');
+            return { ...item, quantity: item.maxStock };
+          }
+          return { ...item, quantity };
         }
-        return { ...item, quantity: validatedQty };
-      }
-      return item;
-    }));
+        return item;
+      });
+    });
   };
 
   const removeFromCart = (itemId: string) => {
-    setCart(prev => prev.filter(item => item.id !== itemId));
+    setCart(prevCart => prevCart.filter(item => item.id !== itemId));
     showToast('Item removed from cart', 'info');
   };
 
@@ -197,7 +257,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const toggleWishlist = (productId: string) => {
     setWishlist(prev => {
       const exists = prev.includes(productId);
-      const product = ProductService.getById(productId);
+      const product = products.find(p => p.id === productId) || ProductService.getById(productId);
       const name = product ? product.name : 'Item';
       if (exists) {
         showToast(`${name} removed from your wishlist`, 'info');
@@ -215,12 +275,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const cartSubtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   const formatMoney = (amount: number) => {
-    return `Rs. ${amount.toLocaleString()}`;
+    const curr = storeSettings.currency || 'PKR';
+    const prefix = curr.includes('PKR') || curr.includes('Rs') ? 'Rs. ' : `${curr} `;
+    return `${prefix}${amount.toLocaleString()}`;
   };
 
   return (
     <StoreContext.Provider
       value={{
+        categories,
+        setCategories,
+        products,
+        setProducts,
+        collections,
+        setCollections,
+        homepageContent,
+        setHomepageContent,
+        storeSettings,
+        setStoreSettings,
+        refreshCatalog,
+
         cart,
         addToCart,
         updateCartQuantity,

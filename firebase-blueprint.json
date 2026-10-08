@@ -1,0 +1,154 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "An apparel or accessory product offered in the TRENXURE store",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "slug": { "type": "string", "maxLength": 200 },
+        "price": { "type": "number" },
+        "salePrice": { "type": "number" },
+        "description": { "type": "string", "maxLength": 5000 },
+        "category": { "type": "string", "maxLength": 100 },
+        "collection": { "type": "string", "maxLength": 100 },
+        "image": { "type": "string", "maxLength": 2048 },
+        "sku": { "type": "string", "maxLength": 100 },
+        "stock": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "draft", "archived"] },
+        "isFeatured": { "type": "boolean" },
+        "isNew": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "name", "price", "category", "stock", "status"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Product categories in TRENXURE",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "slug": { "type": "string", "maxLength": 100 },
+        "count": { "type": "number" },
+        "image": { "type": "string", "maxLength": 2048 },
+        "description": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["id", "name", "slug"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer purchase orders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "customer": { "type": "string", "maxLength": 200 },
+        "email": { "type": "string", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "total": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "processing", "shipped", "delivered", "cancelled"] },
+        "date": { "type": "string", "maxLength": 64 },
+        "paymentStatus": { "type": "string", "enum": ["paid", "pending", "failed", "refunded"] },
+        "paymentMethod": { "type": "string", "maxLength": 100 },
+        "userId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "customer", "email", "total", "status"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Store customer record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "email": { "type": "string", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "totalOrders": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "lastOrderDate": { "type": "string", "maxLength": 64 },
+        "joinedDate": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "name", "email"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Promotional discount vouchers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "code": { "type": "string", "maxLength": 50 },
+        "discountType": { "type": "string", "enum": ["percentage", "fixed"] },
+        "discountValue": { "type": "number" },
+        "minPurchase": { "type": "number" },
+        "expiryDate": { "type": "string", "maxLength": 64 },
+        "usageLimit": { "type": "number" },
+        "usageCount": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "expired", "disabled"] }
+      },
+      "required": ["id", "code", "discountType", "discountValue", "status"]
+    },
+    "StoreSettings": {
+      "title": "StoreSettings",
+      "description": "Global storefront branding, banners, and policies",
+      "type": "object",
+      "properties": {
+        "storeName": { "type": "string", "maxLength": 100 },
+        "supportEmail": { "type": "string", "maxLength": 200 },
+        "currency": { "type": "string", "maxLength": 10 },
+        "announcementText": { "type": "string", "maxLength": 500 },
+        "announcementEnabled": { "type": "boolean" },
+        "freeShippingThreshold": { "type": "number" },
+        "heroTitle": { "type": "string", "maxLength": 200 },
+        "heroSubtitle": { "type": "string", "maxLength": 500 },
+        "heroBadge": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["storeName"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with display name and contact email",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 200 },
+        "displayName": { "type": "string", "maxLength": 200 },
+        "photoURL": { "type": "string", "maxLength": 2048 },
+        "role": { "type": "string", "enum": ["admin", "customer"] },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of catalog products"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Collection of catalog categories"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Collection of customer orders"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Collection of recorded customers"
+    },
+    "/coupons/{couponId}": {
+      "schema": "Coupon",
+      "description": "Collection of discount coupons"
+    },
+    "/settings/{settingId}": {
+      "schema": "StoreSettings",
+      "description": "Store configuration and homepage settings"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Authenticated user profiles"
+    }
+  }
+}

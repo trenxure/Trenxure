@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
 import { OrderService, CouponService } from '../services/commerceService';
 import { PaymentMethod, ShippingAddress } from '../types/commerce';
 import { BrandLogo } from '../components/brand/BrandLogo';
@@ -17,6 +18,7 @@ import {
 
 export const CheckoutPage: React.FC = () => {
   const { cart, cartSubtotal, formatMoney, navigate, clearCart, showToast } = useStore();
+  const { user } = useAuth();
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cod');
   const [shippingType, setShippingType] = useState<'standard' | 'priority'>('standard');
@@ -28,9 +30,9 @@ export const CheckoutPage: React.FC = () => {
 
   // Form State
   const [formData, setFormData] = useState<ShippingAddress>({
-    fullName: '',
+    fullName: user?.displayName || '',
     phone: '',
-    email: '',
+    email: user?.email || '',
     addressLine1: '',
     addressLine2: '',
     city: 'Karachi',
@@ -38,6 +40,16 @@ export const CheckoutPage: React.FC = () => {
     postalCode: '75500',
     country: 'Pakistan'
   });
+
+  useEffect(() => {
+    if (user) {
+      setFormData(prev => ({
+        ...prev,
+        fullName: prev.fullName || user.displayName || '',
+        email: prev.email || user.email || ''
+      }));
+    }
+  }, [user]);
 
   const citiesPakistan = [
     { city: 'Karachi', province: 'Sindh' },
@@ -88,7 +100,7 @@ export const CheckoutPage: React.FC = () => {
   const discountAmount = appliedCoupon ? appliedCoupon.discount : 0;
   const grandTotal = Math.max(0, cartSubtotal + shippingFee - discountAmount);
 
-  const handlePlaceOrder = (e: React.FormEvent) => {
+  const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -99,8 +111,9 @@ export const CheckoutPage: React.FC = () => {
 
     setIsProcessing(true);
 
-    setTimeout(() => {
-      const res = OrderService.createOrder({
+    try {
+      const res = await OrderService.createOrder({
+        userId: user ? user.uid : undefined,
         customerName: formData.fullName,
         customerEmail: formData.email,
         customerPhone: formData.phone,
@@ -110,8 +123,6 @@ export const CheckoutPage: React.FC = () => {
         paymentMethod: paymentMethod
       });
 
-      setIsProcessing(false);
-
       if (res.success && res.order) {
         clearCart();
         showToast(`Order ${res.order.orderNumber} placed successfully!`, 'success');
@@ -119,7 +130,12 @@ export const CheckoutPage: React.FC = () => {
       } else {
         setErrorMessage(res.error || 'Failed to place order. Please review your cart.');
       }
-    }, 700);
+    } catch (err) {
+      console.error('Order creation error:', err);
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to securely record order in database.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (

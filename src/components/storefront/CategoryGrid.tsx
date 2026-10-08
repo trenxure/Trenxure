@@ -1,13 +1,15 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { CATEGORIES_DATA } from '../../data/seedData';
+import { CategoryService } from '../../services/commerceService';
 import { ArrowRight, ArrowUpRight } from 'lucide-react';
 
 export const CategoryGrid: React.FC = () => {
-  const { navigate } = useStore();
+  const { navigate, categories: allCategories } = useStore();
 
-  // Take the primary 3 featured in screenshot: Blazers, Hoodies, T-Shirts
-  const featuredCategories = CATEGORIES_DATA.slice(0, 3);
+  const featuredCategories = useMemo(() => {
+    const all = allCategories.filter(c => c.active !== false);
+    return all.slice(0, 3);
+  }, [allCategories]);
 
   return (
     <section className="py-12 md:py-16 bg-[#F7F5F0]">

@@ -1,4 +1,5 @@
 import React from 'react';
+import { AuthProvider } from './context/AuthContext';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { AnnouncementBar } from './components/storefront/AnnouncementBar';
 import { Header } from './components/storefront/Header';
@@ -106,8 +107,10 @@ const AppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <StoreProvider>
-      <AppContent />
-    </StoreProvider>
+    <AuthProvider>
+      <StoreProvider>
+        <AppContent />
+      </StoreProvider>
+    </AuthProvider>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
-import { ProductService } from '../services/commerceService';
+import { ProductService, CategoryService } from '../services/commerceService';
 import { CategoryId, StyleTag, CollectionSlug } from '../types/commerce';
 import { 
   Filter, 
@@ -30,7 +30,9 @@ export const ShopPage: React.FC<ShopPageProps> = ({
     toggleWishlist, 
     isInWishlist, 
     setQuickViewProduct,
-    formatMoney 
+    formatMoney,
+    products: allProducts,
+    categories: allCategories
   } = useStore();
 
   // Parse query params from URL if present
@@ -72,8 +74,6 @@ export const ShopPage: React.FC<ShopPageProps> = ({
       // Fallback
     }
   }, [currentPath]);
-
-  const allProducts = useMemo(() => ProductService.getAll(), []);
 
   // Filtered and sorted products
   const filteredProducts = useMemo(() => {
@@ -146,15 +146,13 @@ export const ShopPage: React.FC<ShopPageProps> = ({
     maxPrice < 35000 || 
     searchQuery.trim() !== '';
 
-  const categoriesList: { id: string; label: string }[] = [
-    { id: 'all', label: 'All Garments' },
-    { id: 'blazers', label: 'Blazers' },
-    { id: 'hoodies', label: 'Hoodies' },
-    { id: 't-shirts', label: 'T-Shirts' },
-    { id: 'coats', label: 'Coats & Trench' },
-    { id: 'pants', label: 'Pants & Cargos' },
-    { id: 'shirts', label: 'Silk Shirts' },
-  ];
+  const categoriesList = useMemo(() => {
+    const rawCategories = allCategories.filter(c => c.active !== false);
+    return [
+      { id: 'all', label: 'All Garments' },
+      ...rawCategories.map(c => ({ id: c.id, label: c.name }))
+    ];
+  }, [allCategories]);
 
   const stylesList: { id: string; label: string }[] = [
     { id: 'all', label: 'All Styles' },

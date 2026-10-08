@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
 import { OrderService, ProductService } from '../services/commerceService';
+import { Order, OrderItem } from '../types/commerce';
 import { 
   Package, 
   Heart, 
@@ -11,15 +13,44 @@ import {
   Trash2, 
   ArrowRight,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 
 export const AccountPage: React.FC = () => {
   const { wishlist, toggleWishlist, addToCart, formatMoney, navigate, showToast } = useStore();
+  const { user, isAdmin, signInWithGoogle, logout, loading } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'orders' | 'wishlist' | 'addresses' | 'profile'>('orders');
 
-  const orders = OrderService.getAll();
+  const [userOrders, setUserOrders] = useState<Order[]>([]);
+
+  useEffect(() => {
+    if (!user) {
+      setUserOrders([]);
+      return;
+    }
+
+    OrderService.getUserOrders(user.uid).then(ordersList => {
+      const userEmail = user.email?.toLowerCase();
+      const allLocal = OrderService.getAll();
+      const matchingLocal = allLocal.filter(o => 
+        (o.userId === user.uid) || 
+        (Boolean(userEmail) && o.customerEmail?.toLowerCase() === userEmail)
+      );
+
+      const combined = [...ordersList];
+      for (const loc of matchingLocal) {
+        if (!combined.some(c => c.id === loc.id)) {
+          combined.push(loc);
+        }
+      }
+      setUserOrders(combined);
+    });
+  }, [user]);
+
+  const orders = userOrders;
   const wishlistProducts = wishlist.map(id => ProductService.getById(id)).filter(Boolean);
 
   const [addresses, setAddresses] = useState([
@@ -73,31 +104,79 @@ export const AccountPage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Profile Card Header */}
-        <div className="bg-white rounded-2xl border border-[#DDD8CF] p-6 sm:p-8 mb-8 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-[#111111] text-[#D0B16A] flex items-center justify-center font-serif text-2xl font-bold">
-              HT
+        {!user ? (
+          <div className="bg-white rounded-2xl border border-[#DDD8CF] p-6 sm:p-8 mb-8 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+            <div className="max-w-xl">
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#B08A45] block mb-1">
+                PATRON IDENTIFICATION & CONCIERGE
+              </span>
+              <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#111111] mb-2">
+                Sign In to Your TRENXURE Profile
+              </h1>
+              <p className="text-xs text-[#77736B] leading-relaxed">
+                Connect securely with Google to access your bespoke orders, synchronized wishlist, address book, and couture privileges backed by Firebase.
+              </p>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-serif text-2xl font-bold text-[#111111]">Hamza Tariq</h1>
-                <span className="px-2.5 py-0.5 bg-[#B08A45]/15 text-[#B08A45] border border-[#B08A45]/30 text-[10px] font-bold uppercase tracking-wider rounded-full">
-                  VIP Patron
-                </span>
-              </div>
-              <p className="text-xs text-[#77736B]">hamza.tariq@example.com · +92 300 8492019 · Karachi, Pakistan</p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto">
             <button
-              onClick={() => navigate('/admin')}
-              className="px-4 py-2 bg-[#E9E1D4] hover:bg-[#DDD8CF] text-[#111111] text-xs font-semibold uppercase tracking-wider rounded transition-colors"
+              onClick={() => signInWithGoogle()}
+              disabled={loading}
+              className="px-6 py-3 bg-[#111111] hover:bg-[#222222] text-[#D0B16A] text-xs font-bold uppercase tracking-wider rounded-lg transition-all flex items-center gap-2.5 shadow-md shrink-0 cursor-pointer"
             >
-              Open Admin Console
+              <LogIn className="w-4 h-4 text-[#D0B16A]" />
+              <span>{loading ? 'Connecting...' : 'Sign In with Google'}</span>
             </button>
           </div>
-        </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-[#DDD8CF] p-6 sm:p-8 mb-8 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              {user.photoURL ? (
+                <img
+                  src={user.photoURL}
+                  alt={user.displayName || 'Patron'}
+                  className="w-16 h-16 rounded-full border-2 border-[#D0B16A] object-cover"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-[#111111] text-[#D0B16A] flex items-center justify-center font-serif text-2xl font-bold">
+                  {user.displayName ? user.displayName.slice(0, 2).toUpperCase() : 'TX'}
+                </div>
+              )}
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="font-serif text-2xl font-bold text-[#111111]">
+                    {user.displayName || 'Valued Patron'}
+                  </h1>
+                  <span className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border ${
+                    isAdmin 
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
+                      : 'bg-[#B08A45]/15 text-[#B08A45] border-[#B08A45]/30'
+                  }`}>
+                    {isAdmin ? 'Verified Administrator' : 'VIP Patron'}
+                  </span>
+                </div>
+                <p className="text-xs text-[#77736B]">{user.email} · Authenticated with Google Firebase</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              {isAdmin && (
+                <button
+                  onClick={() => navigate('/admin')}
+                  className="px-4 py-2 bg-[#111111] hover:bg-[#222222] text-[#D0B16A] text-xs font-semibold uppercase tracking-wider rounded transition-colors"
+                >
+                  Open Admin Console
+                </button>
+              )}
+              <button
+                onClick={() => logout()}
+                className="px-4 py-2 bg-[#E9E1D4] hover:bg-[#DDD8CF] text-[#111111] text-xs font-semibold uppercase tracking-wider rounded transition-colors flex items-center gap-1.5"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Tab Navigation */}
         <div className="flex gap-2 border-b border-[#DDD8CF] mb-8 overflow-x-auto pb-1">
@@ -189,7 +268,7 @@ export const AccountPage: React.FC = () => {
 
                   {/* Items */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {ord.items.map((item, idx) => (
+                    {ord.items.map((item: OrderItem, idx: number) => (
                       <div key={idx} className="flex items-center gap-3 p-2 bg-[#F7F5F0] rounded-lg">
                         <img src={item.image} alt={item.name} className="w-12 h-14 object-cover rounded bg-white shrink-0" />
                         <div className="min-w-0">
